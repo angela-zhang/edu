@@ -17,17 +17,16 @@ toc: true
 The configuration for the use of Chainguard Libraries depends on your build
 tools, continuous integration, and continuous deployment setups.
 
-At a high level adopting the use of Chainguard Libraries consists of the
+At a high level, adopting Chainguard Libraries consists of the
 following steps:
 
 * Remove local caches on workstations and CI/CD pipelines. This step ensures that
-  any libraries that were already sourced from other repositories are requested
-  again and the version from Chainguard Libraries is used instead of other
-  binaries.
+  any libraries that were already sourced from upstream repositories are requested
+  again, and the version from Chainguard Libraries is used instead.
 * Change configuration to access Chainguard Libraries via your repository
   manager after the changes from the [global
   configuration](/chainguard/libraries/javascript/global-configuration/) are
-  implemented.
+  implemented, or via direct access.
 
 These changes must be performed on all workstations of individual developers and
 other engineers running relevant application builds. They must also be performed
@@ -61,6 +60,14 @@ Build configuration to retrieve artifacts **directly** from the Chainguard
 Libraries for JavaScript repository at `https://libraries.cgr.dev/javascript/`
 requires authentication with username and password from a pull token as detailed
 in [access documentation](/chainguard/libraries/access/#pull-token).
+
+See the minimal example projects on this page for demonstrations using direct access for each build tool.
+
+> Note: Direct access requires per-project and per-workstation configuration.
+For organizations with multiple teams, proxying through an artifact manager is
+recommended. See the [global
+configuration](/chainguard/libraries/javascript/global-configuration/) for setup
+guides.
 
 <a id="npm"></a>
 
@@ -111,6 +118,7 @@ therefore an update to the lock file. The lock file also encodes the checksum
 values in the `integrity` field and the download URL in the `resolved` field for
 each module.
 
+### Using a repository manager
 To change a project to use Chainguard Libraries for JavaScript, set the registry
 URL to point to your repository manager in your user `.npmrc` file: 
 
@@ -139,6 +147,45 @@ To change the packages, remove the `node_modules` directory and the
 `package-lock.json` file and run the `npm install` command again. 
 
 Now you can proceed with your development and testing. 
+
+### Using private npm packages alongside Chainguard Repository
+
+If your organization publishes its own packages to the public npm Registry under
+a scoped prefix (for example, `@your-org/package-name`), you may want those
+packages to be fetched directly from npm rather than going through the
+[Chainguard Repository](/chainguard/libraries/chainguard-repository/); for
+example, to bypass the cooldown period for packages you own and trust.
+
+npm supports per-scope registry configuration, which lets you route packages
+with a specific prefix to a different registry:
+
+```
+# .npmrc
+registry=https://libraries.cgr.dev/javascript/
+//libraries.cgr.dev/javascript/:_auth={$token}
+
+@your-org:registry=https://registry.npmjs.org/
+```
+
+However, npm has a behavior where, when it fetches package metadata from a
+scoped registry, it may rewrite the resolved tarball URL in the lockfile to use
+the primary registry host (in this case, Chainguard Repository) instead of the
+scoped registry. This causes subsequent `npm install` runs to attempt to fetch
+your scoped packages from Chainguard Repository, resulting in a 404 or
+authentication error.
+
+To prevent this, add the following line to your `.npmrc`:
+
+```
+replace-registry-host=never
+```
+
+This tells npm never to rewrite the registry host in resolved URLs, so scoped
+packages remain associated with their correct upstream registry in the lockfile.
+
+After adding this line, verify your lockfile reflects the
+correct resolved URLs: scoped packages should resolve to `registry.npmjs.org`
+and all other packages should resolve to `libraries.cgr.dev/javascript`.
 
 
 <a id="npm-minimal"></a>
@@ -171,6 +218,24 @@ Note that the trailing slash in the registry URL is required, and that setting
 `username` and `_password` instead of `auth` with a token does not work with
 npm. The `-w 0` option for `base64` is required and supported by the GNU
 coreutils versions included in most operating systems.
+
+#### Verify authentication with npm ping
+
+Before installing packages, you can verify that authentication is configured correctly by running:
+
+```bash
+npm ping --userconfig .npmrc
+```
+
+A successful respoonse looks like:
+```bash
+npm notice PING https://libraries.cgr.dev/javascript/
+npm notice PONG 1065ms
+```
+
+The PONG response confirms that your credentials are valid and the registry is reachable. If the command fails, check that the .npmrc file exists in the current directory and that your token has not expired.
+
+#### Add dependencies for the project
 
 Add dependencies for your project into the `package.json` file to test retrieval
 from Chainguard Libraries, build the project, and list the dependencies:
@@ -234,6 +299,8 @@ run.
 Any dependency or dependency version changes require another install and
 therefore an update to the lock file. The lock file also encodes the checksum
 values in the `integrity` field and other information for each module.
+
+### Using a repository manager 
 
 To change a project to use Chainguard Libraries for JavaScript, set the registry
 URL to point to your repository manager in your user `.npmrc` file: 
@@ -353,7 +420,7 @@ dependencies. The following block shows a minimal example with `react` and
 }
 ```
 By default, Yarn retrieves the packages from the registry at
-`https://registry.yarnpkg.com` and stored locally folder `.yarn` in the users
+`https://registry.yarnpkg.com` and stores them locally in the `.yarn` folder in the user's
 home directory after running `yarn`. Specific packages are linked into the
 project. This operation also creates the `yarn.lock` file.
 
@@ -366,6 +433,8 @@ version `22.20.0` or even a higher version once available and `yarn` is run.
 Any dependency or dependency version changes require another install and
 therefore an update to the lock file. The lock file also encodes the checksum
 values in the `checksum` field.
+
+### Using a repository manager
 
 To change a project to use Chainguard Libraries for JavaScript, set the registry
 URL to point to your repository manager in your project `.yarnrc.yml` file: 
@@ -389,7 +458,7 @@ Example URLs:
 * Sonatype Nexus: https://repo.example.com:8443/repository/javascript-all
 * Direct access: https://libraries.cgr.dev/javascript
 
-To change the packages, run the `yarn` command again. This forces an updated of
+To change the packages, run the `yarn` command again. This forces an update of
 all packages from the new registry and regeneration of the lock file.
 
 Now you can proceed with your development and testing. 
@@ -443,7 +512,7 @@ commands also result in the creation of the lock file `yarn.lock`, which
 contains the source URL for each package in the `archiveUrl` parameter of the
 `resolution` field.
 
-Adjust the registry configuration to use your repository manager and any add
+Adjust the registry configuration to use your repository manager and add any
 other desired packages for further testing.
 
 <a id="yarn-classic"></a>
@@ -621,6 +690,8 @@ compatible newer releases under semantic versioning. For example, `^22.18.0` for
 
 Any dependency or version changes require running `bun install` again, which
 updates the lockfile.
+
+### Using a repository manager 
 
 To switch a project to use Chainguard Libraries for JavaScript, point Bun at
 your repository manager. Add the [registry
